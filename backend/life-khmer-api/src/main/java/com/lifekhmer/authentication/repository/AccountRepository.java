@@ -12,4 +12,9 @@ public interface AccountRepository extends JpaRepository<Account, UUID>{
             AuthProvider provider,
             String providerSubject
     );
+
+    boolean existsByProviderAndProviderSubject(
+            AuthProvider provider,
+            String providerSubject
+    );
 }
