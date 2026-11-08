@@ -10,11 +10,15 @@ import com.lifekhmer.authentication.entity.Account;
 import com.lifekhmer.authentication.entity.eum.AuthProvider;
 import com.lifekhmer.authentication.mapper.AuthMapper;
 import com.lifekhmer.authentication.repository.AccountRepository;
+import com.lifekhmer.authentication.security.JwtService;
 import com.lifekhmer.authentication.service.AuthService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.webmvc.autoconfigure.WebMvcProperties;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -23,7 +27,7 @@ public class AuthServiceImpl implements AuthService {
     private final AccountRepository accountRepository;
     private final AuthMapper authMapper;
     private final PasswordEncoder passwordEncoder;
-
+    private final JwtService jwtService;
 
     @Override
     @Transactional
@@ -56,7 +60,37 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public LoginResponse login(LoginRequest request) {
-        return null;
+
+        // Normalize email
+        String email = request.email().trim().toLowerCase();
+
+        Account account = accountRepository.findByProviderAndProviderSubject(AuthProvider.LOCAL,
+                email)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid email or password"));
+
+        if(!passwordEncoder.matches(
+                request.password(),
+                account.getPasswordHash()
+        )){
+            throw new IllegalArgumentException("Invalid email or password");
+        }
+
+        // retrieve associated user
+        User user = account.getUser();
+
+        // Generate token
+        String accessToken = jwtService.generateAccessToken(user);
+        String refreshToken = jwtService.generateRefreshToken(user);
+
+        // return response
+        return authMapper.toLoginResponse(
+                user,
+                account,
+                accessToken,
+                refreshToken,
+                jwtService.getAccessTokenExpiration()
+        );
     }
 }
