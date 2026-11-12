@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: lifekhmer
+      POSTGRES_USER: lifekhmer
+      POSTGRES_PASSWORD: lifekhmer
+    ports: ["5432:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lifekhmer -d lifekhmer"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  api:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/lifekhmer
+      DB_USERNAME: lifekhmer
+      DB_PASSWORD: lifekhmer
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+    ports: ["8090:8090"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+volumes:
+  postgres-data:

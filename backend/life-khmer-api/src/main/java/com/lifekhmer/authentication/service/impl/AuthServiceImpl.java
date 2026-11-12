@@ -10,15 +10,22 @@ import com.lifekhmer.authentication.entity.Account;
 import com.lifekhmer.authentication.entity.eum.AuthProvider;
 import com.lifekhmer.authentication.mapper.AuthMapper;
 import com.lifekhmer.authentication.repository.AccountRepository;
+import com.lifekhmer.authentication.repository.RefreshTokenRepository;
+import com.lifekhmer.authentication.entity.RefreshToken;
+import com.lifekhmer.authentication.dto.request.RefreshTokenRequest;
+import com.lifekhmer.common.exception.BadRequestException;
+import com.lifekhmer.common.exception.DuplicateResourceException;
+import com.lifekhmer.common.exception.UnauthorizedException;
 import com.lifekhmer.authentication.security.JwtService;
 import com.lifekhmer.authentication.service.AuthService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.webmvc.autoconfigure.WebMvcProperties;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Locale;
+import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +35,7 @@ public class AuthServiceImpl implements AuthService {
     private final AuthMapper authMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final RefreshTokenRepository refreshTokenRepository;
 
     @Override
     @Transactional
@@ -36,7 +44,7 @@ public class AuthServiceImpl implements AuthService {
 
         // check whether the email is already exist
         if(accountRepository.existsByProviderAndProviderSubject(AuthProvider.LOCAL, email)){
-            throw new IllegalArgumentException("Email is already exist");
+            throw new DuplicateResourceException("An account with this email already exists");
         }
 
         // convert registration request into User entity
@@ -68,13 +76,13 @@ public class AuthServiceImpl implements AuthService {
 
         Account account = accountRepository.findByProviderAndProviderSubject(AuthProvider.LOCAL,
                 email)
-                .orElseThrow(() -> new IllegalArgumentException("Invalid email or password"));
+                .orElseThrow(() -> new UnauthorizedException("Invalid email or password"));
 
         if(!passwordEncoder.matches(
                 request.password(),
                 account.getPasswordHash()
         )){
-            throw new IllegalArgumentException("Invalid email or password");
+            throw new UnauthorizedException("Invalid email or password");
         }
 
         // retrieve associated user
@@ -82,7 +90,7 @@ public class AuthServiceImpl implements AuthService {
 
         // Generate token
         String accessToken = jwtService.generateAccessToken(user);
-        String refreshToken = jwtService.generateRefreshToken(user);
+        String refreshToken = issueRefreshToken(user);
 
         // return response
         return authMapper.toLoginResponse(
@@ -93,4 +101,27 @@ public class AuthServiceImpl implements AuthService {
                 jwtService.getAccessTokenExpiration()
         );
     }
+
+    @Override @Transactional
+    public LoginResponse refresh(RefreshTokenRequest request) {
+        if (!jwtService.isTokenValid(request.refreshToken(), "refresh")) throw new UnauthorizedException("Invalid or expired refresh token");
+        RefreshToken old = refreshTokenRepository.findByTokenHash(hash(request.refreshToken())).orElseThrow(() -> new UnauthorizedException("Invalid or expired refresh token"));
+        if (!old.isActive()) throw new UnauthorizedException("Refresh token has been revoked or expired");
+        old.setRevokedAt(LocalDateTime.now());
+        String raw = issueRefreshToken(old.getUser());
+        RefreshToken replacement = refreshTokenRepository.findByTokenHash(hash(raw)).orElseThrow();
+        old.setReplacedByTokenId(replacement.getId());
+        Account account = accountRepository.findByUserIdAndProvider(old.getUser().getId(), AuthProvider.LOCAL).orElseThrow(() -> new BadRequestException("No local account is linked"));
+        return authMapper.toLoginResponse(old.getUser(), account, jwtService.generateAccessToken(old.getUser()), raw, jwtService.getAccessTokenExpiration());
+    }
+
+    @Override @Transactional
+    public void logout(String rawToken) {
+        refreshTokenRepository.findByTokenHash(hash(rawToken)).ifPresent(token -> { if (token.getRevokedAt() == null) token.setRevokedAt(LocalDateTime.now()); });
+    }
+    private String issueRefreshToken(User user) {
+        String raw = jwtService.generateRefreshToken(user);
+        RefreshToken stored = new RefreshToken(); stored.setUser(user); stored.setTokenHash(hash(raw)); stored.setExpiresAt(LocalDateTime.now().plusSeconds(jwtService.getRefreshTokenExpiration() / 1000)); refreshTokenRepository.save(stored); return raw;
+    }
+    private String hash(String value) { try { return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); } catch (Exception e) { throw new IllegalStateException("Cannot hash token", e); } }
 }

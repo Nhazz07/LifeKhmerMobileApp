@@ -39,6 +39,7 @@ public class Account {
     @Column(name = "provider_subject", nullable = false)
     private String providerSubject;
 
+    @Column(name = "password_hash", length = 100)
     private String passwordHash;
 
     @Column(nullable = false, updatable = false)

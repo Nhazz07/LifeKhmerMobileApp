@@ -1,0 +1,29 @@
+
+{
+  "project_info": {
+    "project_number": "1003653268773",
+    "project_id": "lifekhmer-25e26",
+    "storage_bucket": "lifekhmer-25e26.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1003653268773:android:0a6849350c3643527f86cc",
+        "android_client_info": {
+          "package_name": "com.example.life_khmer"
+        }
+      },
+      "api_key": [
+        {
+          "current_key": "AIzaSyBjKFtdZ4cZzqmieQRdXHlwdIcdydVQ_gk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

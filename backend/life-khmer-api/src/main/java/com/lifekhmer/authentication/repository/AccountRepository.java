@@ -17,4 +17,6 @@ public interface AccountRepository extends JpaRepository<Account, UUID>{
             AuthProvider provider,
             String providerSubject
     );
+
+    Optional<Account> findByUserIdAndProvider(UUID userId, AuthProvider provider);
 }
